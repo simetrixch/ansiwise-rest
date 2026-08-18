@@ -1,9 +1,17 @@
 # Resolved, not authored.
 .dart_tool/
 
-# pubspec.lock is NOT here, and that is the point: this package is compiled to the executable that
-# deploys a machine, so which versions it was built against is part of what shipped. Resolving them
-# afresh at build time would mean two machines deployed by the same release ran different code.
+# The lock. This package is a LIBRARY — nothing here is compiled to anything, so the versions it
+# happened to resolve against are no part of what ships, and what a build resolves is the pin in the
+# application that consumes it. Tracked it would carry the opposite of a pin: every `dart pub get`
+# rewrites it, and a resolution beside a sibling checkout writes that machine's directory layout into
+# the file everyone gets.
+pubspec.lock
+
+# The path override that points at the sibling checkouts beside this one. Whoever has them writes
+# their own; the git dependencies in pubspec.yaml are what everyone else resolves. Tracked, it would
+# hand every clone a set of paths that are not there.
+pubspec_overrides.yaml
 
 # Build output.
 build/
