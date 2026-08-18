@@ -1,0 +1,14 @@
+# Resolved, not authored.
+.dart_tool/
+
+# pubspec.lock is NOT here, and that is the point: this package is compiled to the executable that
+# deploys a machine, so which versions it was built against is part of what shipped. Resolving them
+# afresh at build time would mean two machines deployed by the same release ran different code.
+
+# Build output.
+build/
+
+# Agent instructions. Loaded from disk by whichever harness opens this repository, and never
+# tracked: they are ours, and this repository is meant to be cloned and used by anybody.
+CLAUDE.md
+AGENTS.md

@@ -1,0 +1,37 @@
+# The REST surface, and the adapter that serves it over a session's own stdin and stdout.
+#
+# WHY IT IS ITS OWN PACKAGE. `ansiwise-api` used to mean two things at once: the framework, and the
+# REST surface inside it. One name, two things, against this tree's own naming law — and the split is
+# what fixes it rather than a rename alone.
+#
+# WHY IT IS A LIBRARY AND NOT A BINARY. The client opens an SSH session, starts `serve` inside it and
+# speaks HTTP over that session's own pipes: no port, no service, nothing left behind. Two
+# executables would mean two binaries to ship, two plugin lists to keep in step, and the client
+# having to know which of them a machine has. So the composition root is the only executable, and
+# this is what it composes.
+name: ansiwise_rest
+description: The REST resources of a deployment, with no transport of their own.
+publish_to: none
+repository: https://github.com/simetrixch/ansiwise-rest
+version: 0.1.0
+
+environment:
+  sdk: ^3.12.0
+
+dependencies:
+  # For the annotations the message types carry, so an immutable one is checked as immutable.
+  meta: ^1.15.0
+  ansiwise_core:
+    git:
+      url: https://github.com/simetrixch/ansiwise-core.git
+      ref: master
+
+dev_dependencies:
+  test: ^1.31.2
+  lints: ^6.1.0
+  # The rule set this tree holds itself to, shipped by the package that checks it.
+  ansiwise_checks_tree:
+    git:
+      url: https://github.com/simetrixch/ansiwise-checks.git
+      ref: master
+      path: tree

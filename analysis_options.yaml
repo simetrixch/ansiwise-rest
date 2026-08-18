@@ -1,0 +1,7 @@
+# The rule set this framework holds ITSELF to is the same one every package here is held to,
+# and it lives in the tree audits — the one package everything may depend on, because it
+# depends on nothing. It used to live here and be included as
+# `package:ansiwise_api/analysis_options.yaml`, which was fine while the framework was the
+# only thing everybody already had. It is not: a package may not reach anything that leads
+# back to this framework, and a shared rule set has to be reachable by all of them.
+include: package:ansiwise_checks_tree/analysis_options.yaml

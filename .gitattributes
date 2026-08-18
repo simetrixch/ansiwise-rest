@@ -1,0 +1,26 @@
+# This framework is edited on Windows and its product runs on Linux: a program file it deploys is
+# read on a Linux machine, and a file that arrives with CRLF is a different file there. The
+# difference shows up as a finding about the code rather than about the line endings.
+#
+# There is no rule for a shell script here, and that is deliberate rather than an omission: this
+# repository holds no shell at all — the gate, the analyzer check and everything under tool/ are
+# Dart programs.
+
+# Normalize all text to LF in the repo AND on checkout, on every platform.
+* text=auto eol=lf
+
+# Files that MUST be LF, whatever the platform they were written on.
+*.yaml    text eol=lf
+*.yml     text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+*.words   text eol=lf
+
+# Binary artifacts — never touch line endings.
+*.tgz   binary
+*.gz    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary

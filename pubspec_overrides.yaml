@@ -1,0 +1,6 @@
+# For working on both at once: a sibling checkout answers instead of the git pin.
+dependency_overrides:
+  ansiwise_core:
+    path: ../ansiwise-core
+  ansiwise_checks_tree:
+    path: ../ansiwise-checks/tree
