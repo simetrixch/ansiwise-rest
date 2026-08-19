@@ -218,7 +218,7 @@ void main() {
       expect(response, isA<Refused>());
       final Refused refused = response as Refused;
       expect(refused.status, 400);
-      expect(refused.reason, contains('must be a JSON object'));
+      expect(refused.reason, contains('answers are an object'));
     });
 
     test('what the operator supplied REACHES the launcher', () async {

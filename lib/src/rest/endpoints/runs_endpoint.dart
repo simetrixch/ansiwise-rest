@@ -100,34 +100,19 @@ final class RunsEndpoint {
     // Checked before the gate and before the launcher: a run that cannot succeed must not be
     // started at all, because a half-finished installation waiting on a value somebody could have
     // typed at the start is worse than a refusal.
-    final Object? supplied = parsed['answers'];
-    if (supplied != null && supplied is! Map<String, Object?>) {
-      return const Refused.badRequest('"answers" must be a JSON object');
+    // READ BY THE FRAMEWORK, not by this door. Both ways of telling a run — this one and the command
+    // line — take the same envelope, and each parsing it itself is what let them drift: the launcher
+    // wrote a shape the run refused, this door had no route for the password, and it refused every
+    // list answer the other took. One reader, and a door that adds nothing of its own.
+    final CallerInputs inputs;
+    try {
+      inputs = CallerInputs.of(parsed, where: 'the request');
+    } on InputsRejected catch (refused) {
+      return Refused.badRequest(refused.message);
     }
-    // THE SAME SHAPE THE OTHER DOOR TAKES, and it is read here for the same reason it is read there.
-    // A JSON decoder answers an array as List<dynamic>, and an answer that holds a list holds a list
-    // of TEXT — so the element type is fixed here rather than left to fail the kind check with a
-    // message about a type nobody wrote. Without it this door refused every list answer a program
-    // declares while the command line took them, which is two doors into one engine disagreeing
-    // about what a run is told.
-    final Map<String, Object?> answers = <String, Object?>{
-      for (final MapEntry<String, Object?> answer
-          in ((supplied as Map<String, Object?>?) ?? const <String, Object?>{}).entries)
-        answer.key: switch (answer.value) {
-          final List<Object?> texts => <String>[for (final Object? each in texts) '$each'],
-          final Object? value => value,
-        },
-    };
+    final Map<String, Object?> answers = inputs.answers;
+    final String? password = inputs.elevationPassword;
 
-    // THE PASSWORD THAT RAISES A COMMAND TO ROOT, where the installation says the caller hands it
-    // over. It belongs to a RUN and not to this process: the surface serving this request executes
-    // no step and holds none, and the run it starts is a process of its own that is handed its own.
-    // Never validated against the configuration here — what the installation named is the run's to
-    // read, and a second reading of it here would be a second place to keep in step.
-    final Object? password = parsed['elevation_password'];
-    if (password != null && (password is! String || password.isEmpty)) {
-      return const Refused.badRequest('"elevation_password" holds nothing usable');
-    }
     try {
       program.declared.answers.validate(answers, program: programName);
     } on AnswersRejected catch (refused) {
@@ -187,7 +172,7 @@ final class RunsEndpoint {
         program: program.declared.name,
         mode: mode,
         answers: answers,
-        elevationPassword: password as String?,
+        elevationPassword: password,
         resumes: resumes,
         waived: waived,
       );
