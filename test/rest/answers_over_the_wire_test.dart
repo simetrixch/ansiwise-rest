@@ -308,4 +308,101 @@ void main() {
       expect(launcher.answers.single, isEmpty);
     });
   });
+  group('a list answer', () {
+    // TWO DOORS INTO ONE ENGINE, and they disagreed. A JSON decoder answers an array as
+    // List<dynamic>; the command line fixed the element type before validating and this door did
+    // not, so every program declaring a list answer could be run by hand and not over the API —
+    // found by driving a real release, whose regenerate-branch declares one.
+    ResolvedProgram listing() =>
+        ProgramResolver(
+          registryOf(
+            steps: <String, (String, Step Function(Arguments))>{
+              'runs_a_command': (
+                'lib/src/steps/runs_a_command.dart:9',
+                (Arguments a) => RunsACommand(argv: const <String>['true'], leaves: '/m'),
+              ),
+            },
+          ),
+        ).resolve(
+          programOf(
+            'deploy-thing',
+            <(String, OnFailure, List<String>)>[('runs_a_command', OnFailure.exit, <String>[])],
+            answers: const DeclaredAnswers(<ArgumentSpec>[
+              ArgumentSpec(
+                name: 'recipients',
+                kind: ArgumentKind.textList,
+                describes: 'who is told when something is wrong',
+              ),
+            ]),
+          ),
+        );
+
+    ({DeploymentApi api, RecordingLauncher launcher}) surfaceOver(ResolvedProgram program) {
+      final RecordingLauncher launcher = RecordingLauncher();
+      final FixedCatalogue catalogue = FixedCatalogue(<ResolvedProgram>[program]);
+      const FileRunStore store = FileRunStore(directory: RunDirectory('/nowhere'));
+      return (
+        api: DeploymentApi(
+          programs: ProgramsEndpoint(catalogue),
+          runs: RunsEndpoint(
+            store: store,
+            launcher: launcher,
+            catalogue: catalogue,
+            gate: const Gate(store),
+            json: const PlainRecordJson(),
+            commit: () async => 'abc1234',
+          ),
+          events: const EventsEndpoint(store: store, json: PlainRecordJson()),
+        ),
+        launcher: launcher,
+      );
+    }
+
+    test('a JSON array reaches the run as a list of text', () async {
+      final ({DeploymentApi api, RecordingLauncher launcher}) it = surfaceOver(listing());
+
+      final ApiResponse answered = await it.api.call(
+        ApiRequest(
+          'POST',
+          Uri.parse('/runs'),
+          body: jsonEncode(<String, Object?>{
+            'program': 'deploy-thing',
+            'mode': 'test',
+            'answers': <String, Object?>{
+              'recipients': <String>['one@example.com', 'two@example.com'],
+            },
+          }),
+        ),
+      );
+
+      expect(answered, isA<Answered>(), reason: 'a list answer was refused at this door');
+      expect(it.launcher.answers.single['recipients'], <String>[
+        'one@example.com',
+        'two@example.com',
+      ]);
+    });
+
+    test(
+      'THE INNOCENT NEIGHBOUR: anything that is not a list still arrives as it was sent',
+      () async {
+        final ({DeploymentApi api, RecordingLauncher launcher}) it = surfaceOver(listing());
+
+        await it.api.call(
+          ApiRequest(
+            'POST',
+            Uri.parse('/runs'),
+            body: jsonEncode(<String, Object?>{
+              'program': 'deploy-thing',
+              'mode': 'test',
+              'answers': <String, Object?>{
+                'recipients': <String>['one@example.com'],
+              },
+            }),
+          ),
+        );
+
+        expect(it.launcher.answers.single['recipients'], <String>['one@example.com']);
+      },
+    );
+  });
 }

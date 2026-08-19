@@ -104,8 +104,20 @@ final class RunsEndpoint {
     if (supplied != null && supplied is! Map<String, Object?>) {
       return const Refused.badRequest('"answers" must be a JSON object');
     }
-    final Map<String, Object?> answers =
-        (supplied as Map<String, Object?>?) ?? const <String, Object?>{};
+    // THE SAME SHAPE THE OTHER DOOR TAKES, and it is read here for the same reason it is read there.
+    // A JSON decoder answers an array as List<dynamic>, and an answer that holds a list holds a list
+    // of TEXT — so the element type is fixed here rather than left to fail the kind check with a
+    // message about a type nobody wrote. Without it this door refused every list answer a program
+    // declares while the command line took them, which is two doors into one engine disagreeing
+    // about what a run is told.
+    final Map<String, Object?> answers = <String, Object?>{
+      for (final MapEntry<String, Object?> answer
+          in ((supplied as Map<String, Object?>?) ?? const <String, Object?>{}).entries)
+        answer.key: switch (answer.value) {
+          final List<Object?> texts => <String>[for (final Object? each in texts) '$each'],
+          final Object? value => value,
+        },
+    };
 
     // THE PASSWORD THAT RAISES A COMMAND TO ROOT, where the installation says the caller hands it
     // over. It belongs to a RUN and not to this process: the surface serving this request executes
