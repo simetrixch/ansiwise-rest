@@ -78,6 +78,10 @@ final class RecordingLauncher implements RunLauncher {
   /// The proofs each start was told the run goes without. Kept for the same reason as the rest: an
   /// answer that MENTIONS a waiver proves nothing about what the run itself was told.
   final List<List<Mode>> waivers = <List<Mode>>[];
+
+  /// The password each start was handed, or null where none was. A run that was told one and a run
+  /// that was not are two different runs, and an answer that mentions neither proves nothing.
+  final List<String?> passwords = <String?>[];
   int next = 1;
 
   @override
@@ -85,11 +89,13 @@ final class RecordingLauncher implements RunLauncher {
     required ProgramName program,
     required Mode mode,
     Map<String, Object?> answers = const <String, Object?>{},
+    String? elevationPassword,
     RunId? resumes,
     List<Mode> waived = const <Mode>[],
   }) async {
     started.add((program, mode));
     this.answers.add(answers);
+    passwords.add(elevationPassword);
     resumed.add(resumes);
     waivers.add(waived);
     return RunId('run-${next++}');

@@ -106,6 +106,16 @@ final class RunsEndpoint {
     }
     final Map<String, Object?> answers =
         (supplied as Map<String, Object?>?) ?? const <String, Object?>{};
+
+    // THE PASSWORD THAT RAISES A COMMAND TO ROOT, where the installation says the caller hands it
+    // over. It belongs to a RUN and not to this process: the surface serving this request executes
+    // no step and holds none, and the run it starts is a process of its own that is handed its own.
+    // Never validated against the configuration here — what the installation named is the run's to
+    // read, and a second reading of it here would be a second place to keep in step.
+    final Object? password = parsed['elevation_password'];
+    if (password != null && (password is! String || password.isEmpty)) {
+      return const Refused.badRequest('"elevation_password" holds nothing usable');
+    }
     try {
       program.declared.answers.validate(answers, program: programName);
     } on AnswersRejected catch (refused) {
@@ -165,6 +175,7 @@ final class RunsEndpoint {
         program: program.declared.name,
         mode: mode,
         answers: answers,
+        elevationPassword: password as String?,
         resumes: resumes,
         waived: waived,
       );
