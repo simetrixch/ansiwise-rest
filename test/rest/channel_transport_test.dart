@@ -72,12 +72,14 @@ void main() {
     ).serve();
 
     toServer.add(utf8.encode(request));
-    // The request says `Connection: close`, so the server answers and the channel ends — the same
-    // shape as an SSH session whose command has finished.
+    // THE CHANNEL IS WHAT ENDS THE SERVER, and closing it here is the whole shape of a session: a
+    // caller says what it came to say and stops sending. Nothing else ends it — a server that shut
+    // itself once it had handed out its connection was the defect that made `serve` mute over a
+    // real session, where the request always lost that race.
+    await toServer.close();
     await served.timeout(const Duration(seconds: 5));
     await fromServer.close();
     await collected;
-    await toServer.close();
     return utf8.decode(answered);
   }
 
