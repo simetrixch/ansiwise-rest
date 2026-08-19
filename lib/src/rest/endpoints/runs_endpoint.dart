@@ -110,7 +110,11 @@ final class RunsEndpoint {
     } on InputsRejected catch (refused) {
       return Refused.badRequest(refused.message);
     }
-    final Map<String, Object?> answers = inputs.answers;
+    // FILLED BEFORE VALIDATING AND BEFORE FINGERPRINTING, and both matter. Validating the raw
+    // answers refuses a program that declares the password by name; fingerprinting without it
+    // computes a different fingerprint from the run that will carry it, and the gate then refuses
+    // the real run for ever, asking for a dry proof of an input that never existed.
+    final Map<String, Object?> answers = inputs.filledFor(program.declared.answers);
     final String? password = inputs.elevationPassword;
 
     try {

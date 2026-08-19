@@ -118,4 +118,96 @@ void main() {
       );
     }
   });
+  group('a program that asks for the password by name', () {
+    // THE DEFECT THIS CLOSES, and it blocked the real deploy-gitops. A program may declare an answer
+    // called elevation_password so it can PERSIST the password — write it into the store, so that
+    // whatever calls the next run can hand it over too. The run fills that answer from what the
+    // caller sent beside the answers. This door validated the RAW answers first, so it refused the
+    // program for a missing answer nobody is allowed to send; and it fingerprinted without the
+    // filled value, so the gate then refused the real run for ever, asking for a dry proof of an
+    // input that never existed.
+    ResolvedProgram asking() =>
+        ProgramResolver(
+          registryOf(
+            steps: <String, (String, Step Function(Arguments))>{
+              'runs_a_command': (
+                'lib/src/steps/runs_a_command.dart:9',
+                (Arguments a) => RunsACommand(argv: const <String>['true'], leaves: '/m'),
+              ),
+            },
+          ),
+        ).resolve(
+          programOf(
+            'deploy-thing',
+            <(String, OnFailure, List<String>)>[('runs_a_command', OnFailure.exit, <String>[])],
+            answers: const DeclaredAnswers(<ArgumentSpec>[
+              ArgumentSpec(
+                name: 'elevation_password',
+                kind: ArgumentKind.text,
+                secret: true,
+                describes: 'the password this run was started with',
+              ),
+            ]),
+          ),
+        );
+
+    ({DeploymentApi api, RecordingLauncher launcher}) surfaceAsking() {
+      final RecordingLauncher launcher = RecordingLauncher();
+      final FixedCatalogue catalogue = FixedCatalogue(<ResolvedProgram>[asking()]);
+      const FileRunStore store = FileRunStore(directory: RunDirectory('/nowhere'));
+      return (
+        api: DeploymentApi(
+          programs: ProgramsEndpoint(catalogue),
+          runs: RunsEndpoint(
+            store: store,
+            launcher: launcher,
+            catalogue: catalogue,
+            gate: const Gate(store),
+            json: const PlainRecordJson(),
+            commit: () async => 'abc1234',
+          ),
+          events: const EventsEndpoint(store: store, json: PlainRecordJson()),
+        ),
+        launcher: launcher,
+      );
+    }
+
+    test('is started, and the run is handed the password AS an answer', () async {
+      final ({DeploymentApi api, RecordingLauncher launcher}) it = surfaceAsking();
+
+      final ApiResponse answered = await it.api.call(
+        ApiRequest(
+          'POST',
+          Uri.parse('/runs'),
+          body: jsonEncode(<String, Object?>{
+            'program': 'deploy-thing',
+            'mode': 'dry',
+            'answers': <String, Object?>{},
+            'elevation_password': 'what raises a command',
+          }),
+        ),
+      );
+
+      expect(
+        answered,
+        isA<Answered>(),
+        reason: 'the door refused a program for an answer the run fills itself',
+      );
+      expect(it.launcher.answers.single['elevation_password'], 'what raises a command');
+      // And beside it, the same value on the route the run itself uses — one arrival, two uses.
+      expect(it.launcher.passwords.single, 'what raises a command');
+    });
+
+    test(
+      'THE INNOCENT NEIGHBOUR: a program that does NOT ask for it is handed no such answer',
+      () async {
+        final ({DeploymentApi api, RecordingLauncher launcher}) it = surface();
+
+        await post(it.api, <String, Object?>{'elevation_password': 'what raises a command'});
+
+        expect(it.launcher.answers.single.containsKey('elevation_password'), isFalse);
+        expect(it.launcher.passwords.single, 'what raises a command');
+      },
+    );
+  });
 }
