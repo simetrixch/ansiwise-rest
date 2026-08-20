@@ -25,9 +25,19 @@ const String testTokenValue = 'a-token-for-the-tests';
 
 /// How a line of a hand-built request ends on the wire.
 const String crlf = '\r\n';
-final ServiceToken testToken = ServiceToken(testTokenValue);
 
 void main() {
+  /// The file the address door reads its accepted tokens from, holding the one this suite presents.
+  late Directory tokenHome;
+  late ServiceTokenFile tokens;
+  setUp(() {
+    tokenHome = Directory.systemTemp.createTempSync('concurrent-serving-token');
+    final String path = '${tokenHome.path}${Platform.pathSeparator}token';
+    File(path).writeAsStringSync(testTokenValue);
+    tokens = ServiceTokenFile(path);
+  });
+  tearDown(() => tokenHome.deleteSync(recursive: true));
+
   /// The same one-program surface the channel tests serve, over whichever store a test brings.
   DeploymentApi apiOver(RunStore store) {
     final ResolvedProgram program =
@@ -63,7 +73,7 @@ void main() {
     final Future<void> serving = ListeningHttpServer(
       api,
       address: '127.0.0.1:0',
-      token: testToken,
+      tokens: tokens,
     ).serve(onBound: bound.complete);
     return (await bound.future, serving);
   }
@@ -214,7 +224,7 @@ void main() {
 
   group('an address that leaves the decision to this code is refused', () {
     Future<void> refused(String address, {required Pattern naming}) => expectLater(
-      ListeningHttpServer(apiOver(MemoryRunStore()), address: address, token: testToken).serve(),
+      ListeningHttpServer(apiOver(MemoryRunStore()), address: address, tokens: tokens).serve(),
       throwsA(
         isA<FormatException>().having(
           (FormatException e) => e.message,
@@ -238,6 +248,38 @@ void main() {
 
     test('unix: with no path behind it', () async {
       await refused('unix:', naming: 'names no path');
+    });
+  });
+
+  group('an address is never stood on by a service with nothing to guard it', () {
+    Future<void> refusedBeforeBinding(String tokenPath, Matcher throwing) async {
+      HttpServer? everBound;
+      await expectLater(
+        ListeningHttpServer(
+          apiOver(MemoryRunStore()),
+          address: '127.0.0.1:0',
+          tokens: ServiceTokenFile(tokenPath),
+        ).serve(onBound: (HttpServer bound) => everBound = bound),
+        throwsA(throwing),
+      );
+      expect(
+        everBound,
+        isNull,
+        reason: 'the tokens are read BEFORE the bind, so nothing was ever listening',
+      );
+    }
+
+    test('a token file that was never placed', () async {
+      await refusedBeforeBinding(
+        '${tokenHome.path}${Platform.pathSeparator}never-placed',
+        isA<FileSystemException>(),
+      );
+    });
+
+    test('a token file holding nothing', () async {
+      final String empty = '${tokenHome.path}${Platform.pathSeparator}empty';
+      File(empty).writeAsStringSync(' \n');
+      await refusedBeforeBinding(empty, isA<StateError>());
     });
   });
 }

@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'api_message.dart';
-import 'service_token.dart';
+import 'service_token_file.dart';
 import 'service_token_gate.dart';
 import 'deployment_api.dart';
 // Only the socket, by name: this file speaks dart:io's HttpRequest, and the framework has a port
@@ -73,12 +73,12 @@ final class ChannelHttpServer {
 ///    the surface with file permissions than with a port. The prefix is what keeps a socket path
 ///    and a host from ever being read as one another.
 final class ListeningHttpServer {
-  /// Serves [api] on [address], to callers holding [token].
+  /// Serves [api] on [address], to callers holding one of the tokens in [tokens].
   ///
-  /// [token] is required and cannot be null. Nothing here can be configured into serving open: a
+  /// [tokens] is required and cannot be null. Nothing here can be configured into serving open: a
   /// door on an address is reached by whoever can reach the address, and the one that decides who
   /// that is has to be impossible to forget.
-  const ListeningHttpServer(this.api, {required this.address, required this.token});
+  const ListeningHttpServer(this.api, {required this.address, required this.tokens});
 
   /// What answers the requests.
   final DeploymentApi api;
@@ -86,8 +86,9 @@ final class ListeningHttpServer {
   /// Where to listen, in one of the two shapes above.
   final String address;
 
-  /// What every caller on this address must present.
-  final ServiceToken token;
+  /// The file holding what every caller on this address must present. Read again for every request,
+  /// so a token can be placed or retired under a service that keeps answering.
+  final ServiceTokenFile tokens;
 
   /// Binds [address] and answers requests until the server is closed.
   ///
@@ -100,10 +101,18 @@ final class ListeningHttpServer {
   /// [SocketException] when it cannot be bound — both before a single request is read, so a
   /// service with a wrong address fails at start where an operator is looking, not at the first
   /// request when nobody is.
+  ///
+  /// THE TOKENS ARE READ BEFORE THE BIND, and a file that is missing, holds none, or holds a line
+  /// that is not a token throws here — [FileSystemException] or [StateError], the only two, both
+  /// before anything is bound. A machine whose token
+  /// was never placed refuses to start rather than standing on an address while nothing guards it,
+  /// and this is the server's own guarantee rather than something a composition root has to
+  /// remember. What the file says afterwards is asked for per request, not held.
   Future<void> serve({void Function(HttpServer bound)? onBound}) async {
+    await tokens.read();
     final HttpServer server = await _bind(address);
     onBound?.call(server);
-    final ServiceTokenGate gate = ServiceTokenGate(api.call, token: token);
+    final ServiceTokenGate gate = ServiceTokenGate(api.call, accepted: tokens.accepted);
     await _answerAll(
       server,
       (ApiRequest request, String? presented) => gate.call(request, authorization: presented),

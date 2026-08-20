@@ -19,31 +19,43 @@ import 'service_token.dart';
 /// WHY ONE REFUSAL FOR MISSING, EMPTY AND WRONG. A caller that is told "no token" when it sent
 /// none, and "wrong token" when it sent one, has been told which half of its guess was right. Every
 /// failure is the same status and the same words, and the comparison still runs when nothing was
-/// presented, so the timing says no more than the text does.
+/// presented, so the timing says no more than the text does. A caller holding a token that was
+/// retired an hour ago is refused in those same words, and a caller holding one of two accepted
+/// tokens is answered exactly like the holder of the other — [ServiceTokens.matches] is what keeps
+/// the second of those true.
 ///
 /// The refusal also comes before the routing could say 404 or 405: an unauthenticated caller does
 /// not get to map which paths exist.
+///
+/// WHY THE SET IS ASKED FOR PER REQUEST rather than held here. The gate decides with whatever is
+/// accepted at the moment a request arrives, so a token placed or retired while the service runs
+/// takes effect on the next request. A set held here would put the service's own restart between
+/// the operator's act and the machine agreeing to it, and a restart is a stretch of time in which
+/// the manager cannot reach the machine at all.
 final class ServiceTokenGate {
-  /// Guards [api] with [token].
-  const ServiceTokenGate(this.api, {required this.token});
+  /// Guards [api], letting through whoever holds one of the tokens [accepted] answers with.
+  const ServiceTokenGate(this.api, {required this.accepted});
 
   /// What answers once the caller is let through.
   final Future<ApiResponse> Function(ApiRequest request) api;
 
-  /// What every caller must present.
-  final ServiceToken token;
+  /// The tokens that may pass right now. A resident service passes `ServiceTokenFile.accepted`,
+  /// which reads them from the file again for every request.
+  final Future<ServiceTokens> Function() accepted;
 
   /// One answer for every way of not holding the token. Static and const: a single object cannot
   /// drift into two wordings, and its text carries nothing the caller sent.
   static const Refused _refused = Refused(401, 'this surface is closed without the service token');
 
-  /// Answers [request] when [authorization] carries the token, and refuses it otherwise.
+  /// Answers [request] when [authorization] carries one of the accepted tokens, and refuses it
+  /// otherwise.
   ///
   /// [authorization] is the request's `Authorization` header, or null where there was none. It is
   /// required rather than defaulted so no carrier can forget to pass it and serve open by accident
   /// — whoever calls this has to write down what the caller presented, even when that is nothing.
   Future<ApiResponse> call(ApiRequest request, {required String? authorization}) async {
-    if (!token.matches(_presented(authorization))) {
+    final ServiceTokens tokens = await accepted();
+    if (!tokens.matches(_presented(authorization))) {
       return _refused;
     }
     return api(request);

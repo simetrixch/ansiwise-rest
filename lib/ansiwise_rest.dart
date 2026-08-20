@@ -9,6 +9,7 @@ library;
 export 'src/rest/api_message.dart';
 export 'src/rest/channel_http_server.dart';
 export 'src/rest/service_token.dart';
+export 'src/rest/service_token_file.dart';
 export 'src/rest/service_token_gate.dart';
 export 'src/rest/deployment_api.dart';
 export 'src/rest/endpoints/events_endpoint.dart';

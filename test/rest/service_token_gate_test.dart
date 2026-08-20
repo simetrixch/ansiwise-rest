@@ -1,22 +1,24 @@
-import 'dart:io';
-
 import 'package:ansiwise_rest/src/rest/api_message.dart';
 import 'package:ansiwise_rest/src/rest/service_token.dart';
 import 'package:ansiwise_rest/src/rest/service_token_gate.dart';
 import 'package:test/test.dart';
 
-/// The gate in front of the surface: one token, checked on every route, fail-closed.
+/// The gate in front of the surface: the accepted tokens, checked on every route, fail-closed.
 void main() {
   const String theToken = 'sesame-open-42';
+  const String theOtherToken = 'the-one-being-moved-to-99';
 
-  ({ServiceTokenGate gate, List<ApiRequest> reached}) build() {
+  ({ServiceTokenGate gate, List<ApiRequest> reached}) build([
+    List<String> accepted = const <String>[theToken],
+  ]) {
     final List<ApiRequest> reached = <ApiRequest>[];
     Future<ApiResponse> answering(ApiRequest request) async {
       reached.add(request);
       return const Answered(<String, Object?>{'ok': true});
     }
 
-    return (gate: ServiceTokenGate(answering, token: ServiceToken(theToken)), reached: reached);
+    final ServiceTokens tokens = ServiceTokens.of(accepted.map(ServiceToken.new));
+    return (gate: ServiceTokenGate(answering, accepted: () async => tokens), reached: reached);
   }
 
   ApiRequest request([String path = '/programs']) => ApiRequest('GET', Uri.parse(path));
@@ -93,7 +95,7 @@ void main() {
     });
   });
 
-  group('an empty expected token cannot even be built', () {
+  group('what cannot guard the surface cannot even be built', () {
     test('empty and whitespace-only values are refused at construction', () {
       expect(() => ServiceToken(''), throwsArgumentError);
       expect(
@@ -103,37 +105,77 @@ void main() {
       );
     });
 
+    test('a value with a line break in it is refused, because a line is what holds it', () {
+      expect(
+        () => ServiceToken('$theToken\n$theOtherToken'),
+        throwsArgumentError,
+        reason: 'written into the token file it would come back as two tokens, not as itself',
+      );
+      expect(() => ServiceToken('$theToken\r$theOtherToken'), throwsArgumentError);
+    });
+
     test('the token itself never appears in its own toString', () {
       expect(ServiceToken(theToken).toString(), isNot(contains(theToken)));
     });
-  });
 
-  group('the token comes from a file', () {
-    late Directory home;
-    setUp(() => home = Directory.systemTemp.createTempSync('service-token-test'));
-    tearDown(() => home.deleteSync(recursive: true));
-
-    test('a trailing newline from provisioning is not part of the token', () {
-      final File file = File('${home.path}${Platform.pathSeparator}token')
-        ..writeAsStringSync('$theToken\n');
-      expect(ServiceToken.fromFile(file.path).matches(theToken), isTrue);
-    });
-
-    test('an empty file refuses to become a token, naming the path', () {
-      final File file = File('${home.path}${Platform.pathSeparator}token')
-        ..writeAsStringSync(' \n');
+    test('an empty set of accepted tokens is refused the same way', () {
       expect(
-        () => ServiceToken.fromFile(file.path),
-        throwsA(
-          isA<StateError>().having((StateError e) => e.message, 'message', contains(file.path)),
-        ),
-        reason: 'a machine whose token was never placed must refuse to serve, not serve openly',
+        () => ServiceTokens.of(<ServiceToken>[]),
+        throwsArgumentError,
+        reason: 'a surface that accepts nothing is not guarded, it is unreachable',
       );
     });
 
-    test('a missing file fails with the path in it, so start-up says what is missing', () {
-      final String nowhere = '${home.path}${Platform.pathSeparator}never-placed';
-      expect(() => ServiceToken.fromFile(nowhere), throwsA(isA<FileSystemException>()));
+    test('a set says how many it holds and never what they are', () {
+      final ServiceTokens two = ServiceTokens.of(<ServiceToken>[
+        ServiceToken(theToken),
+        ServiceToken(theOtherToken),
+      ]);
+      expect(two.count, 2);
+      expect(two.toString(), isNot(contains(theToken)));
+      expect(two.toString(), isNot(contains(theOtherToken)));
+    });
+  });
+
+  group('two tokens are accepted at once, which is what a replacement stands in', () {
+    test('both are let through, and the answer does not say which one it was', () async {
+      final ({ServiceTokenGate gate, List<ApiRequest> reached}) it = build(<String>[
+        theToken,
+        theOtherToken,
+      ]);
+      final ApiResponse first = await it.gate.call(request(), authorization: 'Bearer $theToken');
+      final ApiResponse second = await it.gate.call(
+        request(),
+        authorization: 'Bearer $theOtherToken',
+      );
+      expect(first, isA<Answered>());
+      expect(second, isA<Answered>());
+      expect((first as Answered).payload, (second as Answered).payload);
+      expect(it.reached, hasLength(2), reason: 'the holder of either token reaches the API');
+    });
+
+    test('a token that is in neither line is refused as it was before', () async {
+      final ApiResponse answer = await build(<String>[
+        theToken,
+        theOtherToken,
+      ]).gate.call(request(), authorization: 'Bearer a-third-one');
+      expect((answer as Refused).status, 401);
+    });
+
+    test('the refusal is word for word the one a single accepted token gives', () async {
+      final Refused withOne =
+          await build().gate.call(request(), authorization: 'Bearer wrong') as Refused;
+      final Refused withTwo =
+          await build(<String>[
+                theToken,
+                theOtherToken,
+              ]).gate.call(request(), authorization: 'Bearer wrong')
+              as Refused;
+      expect(
+        (withTwo.status, withTwo.reason),
+        (withOne.status, withOne.reason),
+        reason: 'a caller may not learn from a refusal that a replacement is under way',
+      );
     });
   });
 }
