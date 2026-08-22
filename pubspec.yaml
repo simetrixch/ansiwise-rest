@@ -1,16 +1,43 @@
-# The REST surface, and the adapter that serves it over a session's own stdin and stdout.
+# The REST surface, its two doors, and the programs that are those doors.
 #
 # WHY IT IS ITS OWN PACKAGE. `ansiwise-api` used to mean two things at once: the framework, and the
 # REST surface inside it. One name, two things, against this tree's own naming law — and the split is
 # what fixes it rather than a rename alone.
 #
-# WHY IT IS A LIBRARY AND NOT A BINARY. The client opens an SSH session, starts `serve` inside it and
-# speaks HTTP over that session's own pipes: no port, no service, nothing left behind. Two
-# executables would mean two binaries to ship, two plugin lists to keep in step, and the client
-# having to know which of them a machine has. So the composition root is the only executable, and
-# this is what it composes.
+# WHY THE RESIDENT SERVICE IS A PROGRAM HERE AND NOT A SECOND EXECUTABLE. It was asked whether a
+# machine carries TWO executables or ONE binary with two entry points, and the answer is one binary
+# — for a reason that is a fact of the dependency direction rather than a preference:
+#
+#   THIS PACKAGE CANNOT COMPILE A BINARY THAT SERVES A REAL CATALOGUE. Serving `GET /programs` and
+#   starting a run needs the plugin registry, and Dart ahead of time loads no code that was not
+#   compiled in, so the registry is exactly what the composition root imports. That root is
+#   `ansiwise-cli`, and it depends on THIS package. A `bin/` here would either serve with no plugin
+#   in it, or depend on the thing that depends on it. So a second executable could only ever be
+#   built from `ansiwise-cli` — which is not this package having an executable at all, and pays
+#   every cost below to move a file.
+#
+# WHAT THE SECOND EXECUTABLE WOULD HAVE COST, each of them real and each of them avoided: two
+# binaries to ship, where `hostyour-manager#14` places exactly one file and links /usr/local/bin at
+# it; two plugin lists to keep in step, where a served run and a deployment run on one machine could
+# resolve different registries with nothing saying so; and the client having to know which of the
+# two a machine carries.
+#
+# WHAT IS PAID INSTEAD, and it is not nothing: `ansiwise-rest` is a service that a machine cannot
+# run on its own — it runs inside the binary `ansiwise-cli` composes, and a release of this package
+# reaches a machine only through a release of that one.
+#
+# WHAT CHANGED, WHICH IS THE WHOLE OF IT. The resident door stopped being a FLAG on the tool that
+# runs deployments and became a program: `ansiwise service --listen <address> --service-token-file
+# <path>`, with its own name, its own required arguments and its own refusals, all of them stated in
+# lib/src/rest/resident_service.dart. `serve` is the other program and speaks only over a session's
+# own pipes; neither can turn into the other, and the unit a machine boots composes its command from
+# `ResidentService.commandOf` rather than restating it.
+#
+# THIS PACKAGE MAY DEPEND ON NO PLUGIN, and a check holds it to that. It is what makes the plugin
+# list impossible to duplicate rather than merely unlikely to drift: the resident service is HANDED
+# the surface the binary composed, and has nothing to compose one with.
 name: ansiwise_rest
-description: The REST resources of a deployment, with no transport of their own.
+description: The REST resources of a deployment, and the two programs that serve them.
 publish_to: none
 repository: https://github.com/simetrixch/ansiwise-rest
 version: 0.1.0
